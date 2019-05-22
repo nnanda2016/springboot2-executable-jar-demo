@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: Executable JAR Demo
+  profiles:
+    active: dev
+  banner:
+    charset: UTF-8
+    location: classpath:banner.txt
+  pid:
+    fail-on-write-error: true 
+
+management:
+  endpoints:
+    web:
+      base-path: /manage
+      exposure:
+        include: shutdown,loggers,health,info,metrics
+  endpoint:
+    shutdown:
+      enabled: true
+
+logging:
+  config: classpath:log4j2.xml
+   
+---
+
+spring:
+  profiles: dev
+
+app:
+  someConfig: configValue

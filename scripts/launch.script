@@ -1,0 +1,280 @@
+#!/bin/bash
+
+# ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+# :      _____ ____ ___   __          __  _     ______ _               : 
+# :     / ____|  _ \__ \  \ \        / / | |   |  ____| |              : 
+# :    | (___ | |_) | ) |  \ \  /\  / /__| |__ | |__  | |_   ___  __   : 
+# :     \___ \|  _ < / /    \ \/  \/ / _ \ '_ \|  __| | | | | \ \/ /   : 
+# :     ____) | |_) / /_     \  /\  /  __/ |_) | |    | | |_| |>  <    : 
+# :    |_____/|____/____|     \/  \/ \___|_.__/|_|    |_|\__,_/_/\_\   : 
+# :                                                                    :
+# :::::::::::::::::::::: Executable JAR Demo :::::::::::::::::::::::::::
+
+# Utility functions
+echoRed() { echo $'\e[0;31m'"$1"$'\e[0m'; }
+echoGreen() { echo $'\e[0;32m'"$1"$'\e[0m'; }
+echoYellow() { echo $'\e[0;33m'"$1"$'\e[0m'; }
+echoBlue() { echo $'\e[0;34m'"$1"$'\e[0m'; }
+
+isRunning() {
+  ps -p "$1" &> /dev/null
+}
+
+displayLogo() {
+	echo "::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
+	echo ":      _____ ____ ___   __          __  _     ______ _               :"
+	echo ":     / ____|  _ \__ \  \ \        / / | |   |  ____| |              :"
+	echo ":    | (___ | |_) | ) |  \ \  /\  / /__| |__ | |__  | |_   ___  __   :"
+	echo ":     \___ \|  _ < / /    \ \/  \/ / _ \ '_ \|  __| | | | | \ \/ /   :"
+	echo ":     ____) | |_) / /_     \  /\  /  __/ |_) | |    | | |_| |>  <    :"
+	echo ":    |_____/|____/____|     \/  \/ \___|_.__/|_|    |_|\__,_/_/\_\   :"
+	echo ":                                                                    :"
+	echo ":::::::::::::::::::::: Executable JAR Demo :::::::::::::::::::::::::::"
+	echo 
+}
+
+usage() {
+	echo "========"
+	echoGreen "Usage: $0 <action> <arguments>";
+	echoGreen "action (mandatory) - What action to take.";
+	echoGreen "  start - to start the application.";
+	echoGreen "  stop  - to stop the application.";
+	echo
+	echoGreen "Arguments with 'start' action.";
+	echoGreen "  --serverPort=<port #> (optional, default: 5001)";
+	echoGreen "  --xms=8g (optional, default=8g)";
+	echoGreen "  --xmx=8g (optional, default=8g)";
+	echo "========"
+	echo
+}
+                 
+## Move to the current directory
+cd "$(dirname "$0")" || exit 1
+
+CURRENT_DIR=`pwd`
+
+# Determine the instance base name (instance1, instance2 etc) from current directory
+INSTANCE_BASE_NAME=${PWD##*/}
+
+# App Name
+APP_NAME=demo-app
+JAR_FILE_NAME=$APP_NAME.jar
+
+# If JAR file does not exist, error out and exit
+[[ ! -f ${JAR_FILE_NAME} ]] && { echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Application executable '${JAR_FILE_NAME}' does not exist; cannot start app."; echo; exit 1; }
+
+# The PID file
+PID_FILE="${CURRENT_DIR}/instance.pid"
+
+init_for_start() {
+	# Find Java
+	if [[ -n "$JAVA_HOME" ]] && [[ -x "$JAVA_HOME/bin/java" ]]; then
+	    JAVA_EXE="$JAVA_HOME/bin/java"
+	elif type -p java > /dev/null 2>&1; then
+	    JAVA_EXE=$(type -p java)
+	elif [[ -x "/usr/bin/java" ]]; then
+	    JAVA_EXE="/usr/bin/java"
+	else
+	    echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Unable to find Java executable."
+	    echo
+	    exit 1
+	fi
+	
+	# Temporary file directory path
+	local tmp_dir_path="${CURRENT_DIR}/tmp"
+	if [[ ! -d ${tmp_dir_path} ]]; then
+		mkdir -p ${tmp_dir_path}
+	fi
+	
+	# Location for log files
+	local base_log_dir_path="${CURRENT_DIR}/logs"
+	if [[ ! -d ${base_log_dir_path} ]]; then
+		mkdir -p ${base_log_dir_path}
+		chmod -R 750 ${base_log_dir_path}
+	fi
+	
+	DETACH_PROCESS=false
+	
+	for i in "$@";do
+		case $i in
+			--serverPort=*)
+		    	local server_port=${i#*=}
+		  		shift
+		  		;;
+			--xms=*)
+				local min_heap_size=${i#*=}
+				shift # Go past this argument
+				;;
+			--xmx=*)
+				local max_heap_size=${i#*=}
+				shift
+				;;
+		esac
+	done
+	
+	[[ -z "${server_port}" ]] && { server_port="5001"; }
+	[[ -z "${min_heap_size}" ]] && { min_heap_size="8g"; }
+	[[ -z "${max_heap_size}" ]] && { max_heap_size="8g"; }
+	
+	# Collect arguments for application
+	APP_JAVA_OPTS="-server -Djava.awt.headless=true -Dsun.misc.URLClassPath.disableJarChecking=true -XX:+UseStringDeduplication -Djava.io.tmpdir=${tmp_dir_path} -Xms${min_heap_size} -Xmx${max_heap_size}"
+	
+	# Log4J2 config
+	APP_JAVA_OPTS="${APP_JAVA_OPTS} -DbaseLogPath=${base_log_dir_path} -DLog4jContextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector -Dlog4j.shutdownHookEnabled=false"
+	
+	[[ ! -z "${spring_active_profiles}" ]] && { echoGreen "[`date '+%m-%d-%Y %H:%M:%S'`] <INFO> Starting app with profiles '${spring_active_profiles}'."; echo; APP_JAVA_OPTS="${APP_JAVA_OPTS} -Dspring.profiles.active=${spring_active_profiles}"; }
+	
+	# Spring related configs
+	APP_JAVA_OPTS="${APP_JAVA_OPTS} -Dloader.debug=true -Dloader.path=lib,$CURRENT_DIR"
+	
+	PROG_ARGS="--spring.pid.file=$PID_FILE --server.port=${server_port}"
+	
+	# File console.out will be used while starting the process
+	CONSOLE_OUT_FILE="${base_log_dir_path}/console.out"
+	touch ${CONSOLE_OUT_FILE}
+}
+
+start() {
+	init_for_start "$@"
+	
+	if [[ -f "$PID_FILE" ]]; then
+		if [[ -s "$PID_FILE" ]]; then
+			echoBlue "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> Existing PID file found during start."
+			if [[ -r "$PID_FILE" ]]; then
+				local pid=`cat $PID_FILE`
+				ps -p $pid >/dev/null 2>&1
+				if [[ $? -eq 0 ]]; then
+					echoBlue "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> Application already running with PID '$pid'. Start aborted."
+					echoBlue "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> If the following is not a PID of this instance, remove the PID file and try again:"
+					ps -f -p $pid
+					echo
+		            exit 1
+		    	else
+		    		echoGreen "[`date '+%m-%d-%Y %H:%M:%S'`] <INFO> Clearing/removing PID file found during start."
+					rm -f "$PID_FILE" >/dev/null 2>&1
+					if [[ $? != 0 ]]; then
+						if [[ -w "$PID_FILE" ]]; then
+							cat /dev/null > "$PID_FILE"
+						else
+							echoBlue "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> Unable to remove or clear stale PID file. Start aborted."
+							exit 1
+						fi
+					fi
+				fi
+			fi
+		fi
+	fi
+	
+	clear
+	displayLogo
+	
+	local java_cmd="${JAVA_EXE} ${APP_JAVA_OPTS} -jar ${JAR_FILE_NAME} ${PROG_ARGS} > ${CONSOLE_OUT_FILE} 2>&1 &"
+	
+	echoGreen "[`date '+%m-%d-%Y %H:%M:%S'`] <INFO> Starting Application with: "
+	echo
+	echo "========"
+	# This is just to display what command will be executed to run the process
+	echoGreen "${java_cmd}"
+	echo "========"
+	echo
+	
+	eval "${java_cmd}"
+	if [ $? -eq 0 ]; then
+		local started=0
+		local loop_counter=0
+		local sleep_time=5
+		
+		# Wait this amount of time in sec. to check if the proess is 
+		# started and PID file is written 
+		local max_start_wait_time=60
+		
+		while [ $started -eq 0 ]; do
+			# Sleep
+			sleep $sleep_time
+			
+			# Increment counter
+			((loop_counter+=sleep_time))
+			
+			# Check if waiting for too long
+			if [[ $loop_counter -ge $max_start_wait_time ]]; then
+				echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> Waited $max_start_wait_time sec. to start the process; looks like it is not starting. Exiting!"
+				exit 1
+			fi
+			
+			if [[ -f $PID_FILE ]]; then
+				PID=`cat $PID_FILE`
+				if [ "$PID" != "" ]; then
+					disown $PID
+					echoGreen "[`date '+%m-%d-%Y %H:%M:%S'`] <INFO> Application '${APP_NAME}' started with PID: '$PID'."
+					echo
+					
+					# Marking process as started.
+					started=1
+				else
+					echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Application '${APP_NAME}' failed to start; please check the log files for failure details."
+					exit 1		
+				fi
+			fi
+		done
+	else
+		echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Application '${APP_NAME}' failed to start."
+	fi
+}
+
+init_for_stop() {
+	for i in "$@";do
+		case $i in
+			--maxWaitTime=*)
+				MAX_STOP_WAIT_TIME=${i#*=}
+				shift
+				;;
+		esac
+	done
+}
+
+do_force_stop() {
+  kill -9 "$1" &> /dev/null || { echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Unable to force kill process $1"; return 1; }
+  for i in $(seq 1 $MAX_STOP_WAIT_TIME); do
+    isRunning "$1" || { echoGreen "[`date '+%m-%d-%Y %H:%M:%S'`] <INFO> Stopped [$1]"; rm -f "$2"; return 0; }
+    [[ $i -eq MAX_STOP_WAIT_TIME/2 ]] && kill -9 "$1" &> /dev/null
+    sleep 1
+  done
+  echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Unable to force kill process $1";
+  return 1;
+}
+
+do_stop() {
+  kill "$1" &> /dev/null || { echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Unable to stop process $1"; return 1; }
+  for i in $(seq 1 $MAX_STOP_WAIT_TIME); do
+    isRunning "$1" || { echoGreen "[`date '+%m-%d-%Y %H:%M:%S'`] <INFO> Application Stopped [PID: $1]."; rm -f "$2"; return 0; }
+    [[ $i -eq MAX_STOP_WAIT_TIME/2 ]] && kill "$1" &> /dev/null
+    sleep 1
+  done
+  do_force_stop "$1" "$2"
+}
+
+stop() {
+	init_for_stop
+	
+	# Wait this amount of time in sec. to check if the proess is 
+	# gracefully stopping or not. After this expires, fire a kill -9  
+	[[ -z ${MAX_STOP_WAIT_TIME} ]] && { MAX_STOP_WAIT_TIME=300; }
+	
+	local working_dir=`dirname "${JAR_FILE_NAME}"`
+	pushd "$working_dir" > /dev/null
+	[[ -f $PID_FILE ]] || { echoBlue "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> Application is not running (pidfile not found)"; return 0; }
+	PID=`cat "$PID_FILE"`
+	isRunning "$PID" || { echoBlue "[`date '+%m-%d-%Y %H:%M:%S'`] <WARN> Application is not running (process ${PID}). Removing stale pid file."; rm -f "$PID_FILE"; return 0; }
+	
+	do_stop "$PID" "$PID_FILE"
+}
+
+action=$1
+case $action in
+	start)
+		start "$@"; exit $?;;
+	stop)
+		stop "$@"; exit $?;;
+	*)
+		usage "$@"; exit 1;;
+esac
