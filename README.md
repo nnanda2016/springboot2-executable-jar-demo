@@ -11,8 +11,5 @@ To execute:
 
 ```bash
 cd build/libs
-mv <whatever-jar-name> demo-app.jar
-./demo-app.jar # This will show you CLI args you need to run this.
-
-./demo-app.jar start 
+./<JAR_FILE_NAME>.jar start
 ```
