@@ -42,8 +42,8 @@ usage() {
 	echo
 	echoGreen "Arguments with 'start' action.";
 	echoGreen "  --serverPort=<port #> (optional, default: 5001)";
-	echoGreen "  --xms=8g (optional, default=8g)";
-	echoGreen "  --xmx=8g (optional, default=8g)";
+	echoGreen "  --xms=8g (optional, default=1g)";
+	echoGreen "  --xmx=8g (optional, default=1g)";
 	echo "========"
 	echo
 }
@@ -57,8 +57,8 @@ CURRENT_DIR=`pwd`
 INSTANCE_BASE_NAME=${PWD##*/}
 
 # App Name
-APP_NAME=demo-app
-JAR_FILE_NAME=$APP_NAME.jar
+APP_NAME=$0
+JAR_FILE_NAME=$0 #$APP_NAME.jar
 
 # If JAR file does not exist, error out and exit
 [[ ! -f ${JAR_FILE_NAME} ]] && { echoRed "[`date '+%m-%d-%Y %H:%M:%S'`] <ERROR> Application executable '${JAR_FILE_NAME}' does not exist; cannot start app."; echo; exit 1; }
@@ -113,8 +113,8 @@ init_for_start() {
 	done
 	
 	[[ -z "${server_port}" ]] && { server_port="5001"; }
-	[[ -z "${min_heap_size}" ]] && { min_heap_size="8g"; }
-	[[ -z "${max_heap_size}" ]] && { max_heap_size="8g"; }
+	[[ -z "${min_heap_size}" ]] && { min_heap_size="1g"; }
+	[[ -z "${max_heap_size}" ]] && { max_heap_size="1g"; }
 	
 	# Collect arguments for application
 	APP_JAVA_OPTS="-server -Djava.awt.headless=true -Dsun.misc.URLClassPath.disableJarChecking=true -XX:+UseStringDeduplication -Djava.io.tmpdir=${tmp_dir_path} -Xms${min_heap_size} -Xmx${max_heap_size}"

@@ -1,0 +1,38 @@
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+*.iml
+target/
+bin/
+logs/
+.gradle
+.DS_Store
+build/
+.idea/
+.idea-build/
+.classpath
+.project
+.settings/
+.springBeans
+test-output/
+.apt_generated/
+.factorypath
+out/
+.dist/
+.out/
+*keys.yml
+*temp
+temp/
+secrets*
+

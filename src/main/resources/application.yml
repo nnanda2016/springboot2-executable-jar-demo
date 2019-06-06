@@ -28,4 +28,5 @@ spring:
   profiles: dev
 
 app:
-  someConfig: configValue
+  config1: value1
+  config2: 10
